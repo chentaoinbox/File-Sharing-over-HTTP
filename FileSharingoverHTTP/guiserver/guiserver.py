@@ -18,7 +18,7 @@ import time  # 用于处理修改时间
 import threading
 import tkinter as tk
 from tkinter import filedialog, ttk, simpledialog
-from PIL import Image, ImageTk
+# from PIL import Image, ImageTk
 
 # 配置文件路径
 def get_config_dir():
@@ -1009,3 +1009,4 @@ if __name__ == '__main__':
     root = tk.Tk()
     app = MainApp(root)
     root.mainloop()
+
