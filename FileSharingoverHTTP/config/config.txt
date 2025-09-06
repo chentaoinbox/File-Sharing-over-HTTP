@@ -1,0 +1,4 @@
+dir=E:/desktop
+port=8000
+pw_enabled=1
+password=123456
