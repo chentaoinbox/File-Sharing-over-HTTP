@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件共享</title>
+    <style>
+        /* 手机端字体强制为10px，其他平台不变 */
+        @media (max-width: 600px) {
+            html, body, input, button, select, textarea, h1, h2, h3, h4, h5, h6, .file-list, .file-block, .file-name, .file-meta, .file-actions, .modal-content, .settings, .new-folder {
+                font-size: 10px !important;
+            }
+            table, th, td {
+                font-size: 10px !important;
+            }
+        }
+        body {
+            font-family: "SimSun", "Times New Roman", serif; /* 中文宋体，西文Times New Roman */
+            font-size: 16px; /* 默认字体大小，可根据需要调整 */
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+        }
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #007BFF;
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center; /* 垂直居中 */
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+        .logo img {
+            height: 40px;
+            margin-right: 10px;
+        }
+        .settings {
+            cursor: pointer;
+            font-size: 16px;
+            background: #007BFF;
+            color: #fff;
+            padding: 10px 24px;
+            z-index: 100;
+            border-bottom-left-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            /* 去掉 position: fixed; top/right */
+            /* 由 header flex 布局控制位置和居中 */
+        }
+        .new-folder {
+            cursor: pointer;
+            font-size: 16px;
+            background: #007BFF;
+            color: #fff;
+            padding: 10px 24px;
+            z-index: 100;
+            border-bottom-left-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-right: 8px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            width: 300px;
+        }
+        .modal-content input {
+            width: 95%; /* 更宽 */
+            margin: 16px auto; /* 更大间距 */
+            display: block;
+            text-align: left;
+            font-size: 1.25em; /* 更大字体 */
+            font-weight: normal; /* 非粗体 */
+        }
+        .modal-content button {
+            margin: 5px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .modal-content .confirm {
+            background-color: #007BFF;
+            color: white;
+        }
+        .modal-content .cancel {
+            background-color: #f44336;
+            color: white;
+        }
+        main {
+            padding: 20px;
+        }
+        .login-form {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* 垂直水平居中 */
+            max-width: 300px;
+            padding: 30px;
+            background: #f0f8ff; /* 淡蓝色背景 */
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+        .login-form h2 {
+            color: #007BFF; /* 蓝色标题 */
+            margin-bottom: 20px;
+        }
+        .login-form input {
+            width: 95%;
+            padding: 14px;
+            margin: 14px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            text-align: left;
+            font-size: 1.25em;
+            font-weight: normal;
+        }
+        .login-form button {
+            width: 90%;
+            padding: 10px;
+            background-color: #007BFF; /* 蓝色按钮 */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .login-form button:hover {
+            background-color: #0056b3; /* 深蓝色悬停效果 */
+        }
+        .file-list {
+            display: none;
+            margin: 20px;
+            padding: 20px;
+            background-color: #ffffff; /* 白色背景，独立于登录界面 */
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            font-size: 1em; /* 文件列表字体大小可继承body，也可单独调整 */
+        }
+        .file-list h2 {
+            color: #333; /* 深灰色标题 */
+            margin-bottom: 20px;
+        }
+        .file-list-blocks {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%; /* 让块容器等宽于背景 */
+        }
+        .file-block {
+            display: flex;
+            align-items: center;
+            background: #f8fafd;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            padding: 12px 24px;
+            width: 100%; /* 让块等宽于父容器，适应分辨率 */
+            /* 移除min-width和max-width */
+            box-sizing: border-box;
+        }
+        .file-icon {
+            width: 40px;
+            height: 40px;
+            margin-right: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .file-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .file-name {
+            font-weight: normal;
+            color: #007BFF;
+            font-size: 1.15em;
+            word-break: break-all;
+        }
+        .file-meta {
+            color: #666;
+            font-size: 0.97em;
+            margin-bottom: 4px;
+            /* 去掉时间信息后只显示大小 */
+        }
+        .file-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: 20px;
+        }
+        .file-actions button {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.95em;
+        }
+        .file-actions .download {
+            background-color: #007BFF;
+            color: white;
+        }
+        .file-actions .download:hover {
+            background-color: #0056b3;
+        }
+        .file-actions .delete {
+            background-color: #f44336;
+            color: white;
+        }
+        .file-actions .delete:hover {
+            background-color: #d32f2f;
+        }
+        .upload-button-container {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: #f4f4f9;
+            padding: 10px 0;
+            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+        }
+        .upload-button-container button {
+            width: 90%;
+            max-width: 600px;
+            margin: 0 auto;
+            display: block;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .login-form {
+            max-width: 300px;
+            margin: 100px auto;
+            padding: 30px;
+            background: #f0f8ff; /* 淡蓝色背景 */
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+        header, .file-list, .upload-button-container {
+            display: none; /* 默认隐藏，登录后显示 */
+        }
+        .login-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            /* 渐变动画背景 */
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+            z-index: 0;
+        }
+        @keyframes gradient {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 密码界面专用背景层 -->
+    <div class="login-bg" id="login-bg">
+        <div id="login-title-bg"
+            style="position:absolute;top:10%;left:50%;transform:translateX(-50%);
+                   color:#fff;font-size:6vw;font-weight:bold;text-shadow:0 2px 10px #333;z-index:1;">
+            文件共享登录界面
+        </div>
+    </div>
+    <header>
+        <div class="logo">
+            <img src="/image/log.png" alt="Logo">
+            <span>共享文件页面</span>
+        </div>
+        <div style="display:flex;align-items:center;">
+            <div class="new-folder" onclick="openNewFolderModal()">新建文件夹</div>
+            <div class="settings" onclick="openSettings()">设置</div>
+        </div>
+    </header>
+    <div class="upload-button-container" id="upload-section">
+        <input type="file" id="fileUpload" style="display: none;" onchange="uploadFile(event)">
+        <button onclick="document.getElementById('fileUpload').click()">上传文件</button>
+        <div id="upload-progress" style="width:90%;max-width:600px;margin:10px auto 0 auto;height:8px;background:#eee;border-radius:4px;overflow:hidden;display:none;">
+            <div id="upload-bar" style="height:100%;width:0;background:#007BFF;"></div>
+        </div>
+    </div>
+    <div id="download-progress" style="width:90%;max-width:600px;margin:10px auto 0 auto;height:8px;background:#eee;border-radius:4px;overflow:hidden;display:none;">
+        <div id="download-bar" style="height:100%;width:0;background:#43A047;"></div>
+    </div>
+    <div class="modal" id="settings-modal">
+        <div class="modal-content">
+            <h2>字体大小设置</h2>
+            <input type="number" id="font-size" placeholder="输入字体大小 (例如: 16)" style="width:95%;font-size:1.25em;font-weight:normal;">
+            <div>
+                <button class="confirm" onclick="applySettings()">确认</button>
+                <button class="cancel" onclick="closeSettings()">取消</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="new-folder-modal">
+        <div class="modal-content">
+            <h2>新建文件夹</h2>
+            <input type="text" id="new-folder-name" placeholder="输入文件夹名称" style="width:95%;font-size:1.25em;font-weight:normal;">
+            <div>
+                <button class="confirm" onclick="createFolder()">确认</button>
+                <button class="cancel" onclick="closeNewFolderModal()">取消</button>
+            </div>
+        </div>
+    </div>
+    <main>
+        <div style="height:56px;"></div>
+        <div class="login-form" id="login-form">
+            <h2>请输入密码</h2>
+            <div style="display: flex; justify-content: center;">
+                <input type="password" id="password" placeholder="密码" style="text-align: center;">
+            </div>
+            <button onclick="login()">登录</button>
+        </div>
+        <div class="file-list" id="file-list">
+            <div style="margin-bottom:12px;">
+                <button id="back-btn" onclick="goBackDir()" style="padding:6px 18px;border-radius:6px;background:#eee;color:#007BFF;border:none;cursor:pointer;">返回上一级</button>
+                <button id="refresh-btn" onclick="refreshFileList()" style="padding:6px 18px;border-radius:6px;background:#eee;color:#007BFF;border:none;cursor:pointer;margin-left:10px;">刷新</button>
+            </div>
+            <div class="file-list-blocks" id="file-list-blocks">
+                <div style="height:12px;"></div>
+                <!-- 文件块将通过 JavaScript 动态生成 -->
+            </div>
+        </div>
+        <div style="height:80px;"></div>
+    </main>
+    <script>
+
+        let settingsEnabled = false;
+        let loggedIn = false;
+        let currentDir = ""; // 当前目录，根目录为空
+
+        window.onload = async function() {
+            // 先请求/config接口，判断是否需要登录
+            let needLogin = true;
+            try {
+                const res = await fetch('/config');
+                const result = await res.json();
+                needLogin = !!result.enableLogin;
+            } catch (e) {
+                needLogin = true; // 网络异常时默认需要登录
+            }
+            if (needLogin) {
+                document.getElementById("login-bg").style.display = "block";
+                document.getElementById("login-form").style.display = "block";
+                document.getElementById("file-list").style.display = "none";
+                document.querySelector("header").style.display = "none";
+                document.querySelector(".upload-button-container").style.display = "none";
+            } else {
+                // 不需要登录，直接显示主界面
+                showMain();
+            }
+        };
+
+        async function login() {
+            const passwordInput = document.getElementById("password");
+            const password = passwordInput.value;
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    loggedIn = true;
+                    showMain();
+                } else {
+                    passwordInput.value = "";
+                    passwordInput.placeholder = "密码错误，请重试！";
+                }
+            } catch (e) {
+                passwordInput.value = "";
+                passwordInput.placeholder = "网络错误，请重试！";
+            }
+        }
+
+        function showMain() {
+            document.getElementById("login-form").style.display = "none";
+            document.getElementById("login-bg").style.display = "none";
+            document.getElementById("file-list").style.display = "block";
+            document.querySelector("header").style.display = "flex";
+            document.querySelector(".upload-button-container").style.display = "block";
+            fetchFileList("");
+            enableSettings();
+        }
+
+        function openSettings() {
+            if (!settingsEnabled) {
+                alert("请先登录并确认密码后启用设置功能！");
+                return;
+            }
+            document.getElementById("settings-modal").style.display = "flex";
+            document.getElementById("font-size").focus();
+        }
+
+        function closeSettings() {
+            document.getElementById("settings-modal").style.display = "none";
+        }
+
+        function applySettings() {
+            const fontSize = document.getElementById("font-size").value;
+            if (fontSize) {
+                // 设置整个页面所有字体大小
+                document.body.style.fontSize = fontSize + "px";
+                closeSettings();
+            } else {
+                alert("请输入有效的字体大小！");
+            }
+        }
+
+        function enableSettings() {
+            settingsEnabled = true;
+        }
+
+        function openNewFolderModal() {
+            document.getElementById("new-folder-modal").style.display = "flex";
+            document.getElementById("new-folder-name").value = "";
+            document.getElementById("new-folder-name").focus();
+        }
+
+        function closeNewFolderModal() {
+            document.getElementById("new-folder-modal").style.display = "none";
+        }
+
+        function showTip(msg, color="#007BFF") {
+            let tip = document.createElement("div");
+            tip.style.position = "fixed";
+            tip.style.top = "20%";
+            tip.style.left = "50%";
+            tip.style.transform = "translateX(-50%)";
+            tip.style.background = color;
+            tip.style.color = "#fff";
+            tip.style.padding = "16px 32px";
+            tip.style.borderRadius = "8px";
+            tip.style.fontSize = "1.2em";
+            tip.style.zIndex = "9999";
+            tip.innerText = msg;
+            document.body.appendChild(tip);
+            setTimeout(() => {
+                tip.remove();
+            }, 1000);
+        }
+
+        function createFolder() {
+            const nameInput = document.getElementById("new-folder-name");
+            const name = nameInput.value.trim();
+            if (!name) {
+                showTip("请输入文件夹名称！", "#f44336");
+                return;
+            }
+            let url = "/newfolder";
+            if (currentDir) url += `?dir=${encodeURIComponent(currentDir)}`;
+            fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name })
+            })
+            .then(res => {
+                if (res.ok) {
+                    closeNewFolderModal();
+                    showTip("文件夹创建成功", "#007BFF");
+                    fetchFileList(currentDir);
+                } else {
+                    nameInput.value = "";
+                    closeNewFolderModal();
+                    showTip("文件夹创建失败", "#f44336");
+                }
+            })
+            .catch(() => {
+                nameInput.value = "";
+                closeNewFolderModal();
+                showTip("文件夹创建失败", "#f44336");
+            });
+        }
+
+        function goBackDir() {
+            if (!currentDir) return; // 已在根目录
+            let arr = currentDir.split('/');
+            arr.pop();
+            const parentDir = arr.join('/');
+            fetchFileList(parentDir);
+        }
+
+        function refreshFileList() {
+            // 只刷新文件列表，不重载页面
+            fetchFileList(currentDir);
+        }
+
+        document.getElementById("settings-modal").addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                applySettings();
+            } else if (event.key === "Escape") {
+                event.preventDefault();
+                closeSettings();
+            }
+        });
+
+        document.getElementById("new-folder-modal").addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                createFolder();
+            } else if (event.key === "Escape") {
+                event.preventDefault();
+                closeNewFolderModal();
+            }
+        });
+
+        document.getElementById("password").addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                login();
+            } else if (event.key === "Escape") {
+                event.preventDefault();
+                document.getElementById("password").value = "";
+                document.getElementById("password").blur();
+            }
+        });
+
+        function getPreviewable(ext) {
+            ext = ext.toLowerCase();
+            return [
+                "jpg", "jpeg", "png", "gif", "bmp", "svg",
+                "txt", "pdf", "mp3", "wav", "flac", "mp4", "avi", "mov", "wmv", "webm"
+            ].includes(ext);
+        }
+
+        function previewFile(fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            if (!getPreviewable(ext)) {
+                showTip("该文件类型不支持预览", "#f44336");
+                return;
+            }
+            window.open(`/${currentDir ? encodeURIComponent(currentDir) + "/" : ""}${encodeURIComponent(fileName)}`, "_blank");
+        }
+
+        async function fetchFileList(dir = "") {
+            currentDir = dir;
+            document.getElementById("back-btn").disabled = !currentDir;
+            let files = [];
+            try {
+                const res = await fetch('/list' + (dir ? `?dir=${encodeURIComponent(dir)}` : ''));
+                if (res.ok) {
+                    files = await res.json();
+                }
+            } catch (e) {
+                files = [];
+            }
+            function getFileIcon(name, isFolder) {
+                const ext = name.split('.').pop().toLowerCase();
+                if (isFolder) {
+                    // 文件夹图标
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="4" y="12" width="24" height="12" rx="3" fill="#FFD600"/><rect x="4" y="8" width="10" height="6" rx="2" fill="#FFF176"/></svg>`;
+                }
+                if (["pdf"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#F44336"/><text x="16" y="22" text-anchor="middle" fill="#fff" font-size="13" font-family="Arial" font-weight="bold">PDF</text></svg>`;
+                }
+                if (["zip", "rar", "7z"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#2196F3"/><rect x="14" y="8" width="4" height="16" rx="2" fill="#fff"/><rect x="15" y="12" width="2" height="8" fill="#2196F3"/></svg>`;
+                }
+                if (["mp3", "wav", "flac", "mp4", "avi", "mov", "wmv"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#FFD600"/><polygon points="13,10 24,16 13,22" fill="#333"/></svg>`;
+                }
+                if (["jpg", "jpeg", "png", "gif", "bmp", "svg"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="4" y="8" width="24" height="16" rx="3" fill="#90caf9"/><circle cx="10" cy="16" r="3" fill="#fff"/><polyline points="7,24 14,14 20,22 25,18" stroke="#1976d2" stroke-width="2" fill="none"/></svg>`;
+                }
+                if (["txt"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="5" fill="#e0e0e0"/><text x="16" y="22" text-anchor="middle" fill="#222" font-size="13" font-family="Arial" font-weight="bold">TXT</text></svg>`;
+                }
+                if (["doc", "docx"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" rx="3" fill="#fff"/><rect x="10" y="10" width="12" height="3" fill="#2196F3"/><rect x="10" y="15" width="12" height="2" fill="#90caf9"/><rect x="10" y="19" width="8" height="2" fill="#90caf9"/></svg>`;
+                }
+                if (["xls", "xlsx"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" rx="3" fill="#43A047"/><rect x="10" y="10" width="12" height="2" fill="#fff"/><rect x="10" y="14" width="12" height="2" fill="#fff"/><rect x="10" y="18" width="12" height="2" fill="#fff"/></svg>`;
+                }
+                if (["ppt", "pptx"].includes(ext)) {
+                    return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" rx="3" fill="#FF9800"/><circle cx="16" cy="16" r="6" fill="#fff"/><path d="M16 16 L16 10 A6 6 0 0 1 22 16 Z" fill="#FF9800"/></svg>`;
+                }
+                // 其它文件：灰底+后缀名
+                return `<svg width="32" height="32" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="5" fill="#e0e0e0"/><text x="16" y="22" text-anchor="middle" fill="#222" font-size="13" font-family="Arial" font-weight="bold">${ext.toUpperCase()}</text></svg>`;
+            }
+
+            const fileListBlocks = document.getElementById("file-list-blocks");
+            fileListBlocks.innerHTML = ""; // 清空
+
+            // 保持顶部空行
+            fileListBlocks.innerHTML += `<div style="height:12px;"></div>`;
+
+            files.forEach(file => {
+                const ext = file.name.split('.').pop();
+                let previewBtn = "";
+                if (!file.isFolder && getPreviewable(ext)) {
+                    previewBtn = `<button class="preview" onclick="previewFile('${file.name}')">预览</button>`;
+                }
+                const block = document.createElement("div");
+                block.className = "file-block";
+                block.innerHTML = `
+                    <div class="file-icon">${getFileIcon(file.name, file.isFolder)}</div>
+                    <div class="file-info">
+                        <div class="file-name" style="cursor:pointer;" onclick="openFile('${file.name}', ${!!file.isFolder})">${file.name}</div>
+                        <div class="file-meta">${file.size ? file.size : ""}</div>
+                    </div>
+                    <div class="file-actions">
+                        ${previewBtn}
+                        <button class="download" onclick="downloadFile('${file.name}', ${!!file.isFolder})">下载</button>
+                        <button class="delete" onclick="deleteFile('${file.name}')">删除</button>
+                    </div>
+                `;
+                fileListBlocks.appendChild(block);
+            });
+        }
+
+        function openFile(fileName, isFolder) {
+            if (isFolder) {
+                // 进入子目录并显示内容
+                const nextDir = currentDir ? (currentDir + "/" + fileName) : fileName;
+                fetchFileList(nextDir); // 递归显示子文件夹内容
+            } else {
+                window.open(`/${currentDir ? encodeURIComponent(currentDir) + "/" : ""}${encodeURIComponent(fileName)}`, "_blank");
+            }
+        }
+
+        function previewFile(fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            if (!getPreviewable(ext)) {
+                showTip("该文件类型不支持预览", "#f44336");
+                return;
+            }
+            window.open(`/${currentDir ? encodeURIComponent(currentDir) + "/" : ""}${encodeURIComponent(fileName)}`, "_blank");
+        }
+
+        function downloadFile(fileName, isFolder) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            if (isFolder || ext === "pdf") {
+                // 文件夹和PDF下载都采用iframe跳转，压缩为zip后下载
+                const zipPath = currentDir ? `${currentDir}/${fileName}` : fileName;
+                const url = `/${encodeURIComponent(zipPath)}.zip`;
+                let iframe = document.createElement("iframe");
+                iframe.style.display = "none";
+                iframe.src = url;
+                document.body.appendChild(iframe);
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 3000);
+            } else {
+                // 其它文件下载用a标签download
+                const url = `/${currentDir ? encodeURIComponent(currentDir) + "/" : ""}${encodeURIComponent(fileName)}`;
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        }
+
+        async function deleteFile(fileName) {
+            const target = currentDir ? `${currentDir}/${fileName}` : fileName;
+            try {
+                const response = await fetch(`/${encodeURIComponent(target)}`, {
+                    method: "DELETE"
+                });
+                if (response.ok) {
+                    showTip("删除成功", "#007BFF");
+                } else {
+                    showTip("删除失败", "#f44336");
+                }
+            } catch (error) {
+                showTip("删除失败", "#f44336");
+            }
+            fetchFileList(currentDir); // 始终刷新
+        }
+
+        function uploadFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            let url = "/upload";
+            if (currentDir) url += `?dir=${encodeURIComponent(currentDir)}`;
+
+            // 显示进度条
+            const progressBox = document.getElementById("upload-progress");
+            const progressBar = document.getElementById("upload-bar");
+            progressBox.style.display = "block";
+            progressBar.style.width = "0";
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", url, true);
+
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    progressBar.style.width = percent + "%";
+                }
+            };
+            xhr.onload = function() {
+                progressBar.style.width = "100%";
+                setTimeout(() => { progressBox.style.display = "none"; }, 500);
+                if (xhr.status === 204) {
+                    alert("文件上传成功");
+                    fetchFileList(currentDir);
+                } else {
+                    alert("文件上传失败");
+                }
+            };
+            xhr.onerror = function() {
+                progressBox.style.display = "none";
+                alert("文件上传失败");
+            };
+            xhr.send(formData);
+        }
+
+        // 密码输入框快捷键（已支持Enter确认）
+        document.getElementById("password").addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                login();
+            } else if (event.key === "Escape") {
+                event.preventDefault();
+                document.getElementById("password").value = "";
+                document.getElementById("password").blur();
+            }
+        });
+    </script>
+</body>
+</html>
