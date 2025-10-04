@@ -1,7 +1,7 @@
 # utf-8
 # author: chentao
 # time:2025.9.1
-# description: 文件管理工具
+# description: GUI
 # language: python
 # 执行pyinstaller --onefile --windowed --icon=e:\VScode\python\wab\log.ico --name "文件小样" e:\VScode\python\wab\web.py 进行打包处理
 # version: 1.1.2
