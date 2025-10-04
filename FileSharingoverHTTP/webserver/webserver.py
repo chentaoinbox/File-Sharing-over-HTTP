@@ -3,7 +3,7 @@
 # time:2025.10.04
 # description: webserver
 # language: python
-# version: 1.2
+# version: 1.1.2
 
 import os
 import sys

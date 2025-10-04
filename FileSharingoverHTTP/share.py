@@ -3,16 +3,17 @@
 # time:2025.10.04
 # description: main control
 # language: python
-# version: 1.2
+# version: 1.1.2
+
+import os
+import time
+import datetime
+import threading
+import tkinter as tk
 from webserver import webserver
 from guiserver import guiserver
 from webserver.webserver import webserver_log
 from guiserver.guiserver import gui_activity_log
-import threading
-import tkinter as tk
-import os
-import datetime
-import time
 
 global gui_started
 gui_started = False
