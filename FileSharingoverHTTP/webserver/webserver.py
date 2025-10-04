@@ -18,6 +18,12 @@ import time
 
 # 全局日志变量，供外部查看
 webserver_log = []
+# 全局已见客户端IP及最后访问时间映射
+client_last_seen = {}
+# 已登录用户映射：ip -> last_login_timestamp
+logged_in_ips = {}
+# 登录保持时长（秒），10分钟
+AUTH_TTL = 10 * 60
 
 def refresh_all(on_finish=None):
     """
@@ -28,6 +34,14 @@ def refresh_all(on_finish=None):
     FileServer.SHARE_DIR = cfg['dir']
     FileServer.PASSWORD = cfg['password']
     FileServer.ENABLE_LOGIN = (cfg['pw_enabled'] == '1')
+    # 重新载入配置时，需清空登录数据（按要求），但保留 webserver_log
+    try:
+        if logged_in_ips:
+            log_message(f"重新载入配置: 清空已登录用户记录: {list(logged_in_ips.keys())}")
+        logged_in_ips.clear()
+        client_last_seen.clear()
+    except Exception as e:
+        log_message(f"重新载入配置: 清空已登录用户记录异常: {e}")
     # 端口刷新仅在端口未变时有效，否则需重启服务
     try:
         port_new = int(cfg['port']) if cfg['port'].isdigit() else 8000
@@ -138,6 +152,8 @@ class FileServer(SimpleHTTPRequestHandler):
                 return
         if path == '/list':
             self.handle_list()
+        elif path == '/clients':
+            self.handle_clients()
         elif path == '/config':
             self.handle_config()
         elif path.startswith('/port/'):
@@ -170,21 +186,62 @@ class FileServer(SimpleHTTPRequestHandler):
         else:
             self.send_error(404)
     def handle_login(self):
+        # 支持以下逻辑：
+        # - 如果登录未启用（ENABLE_LOGIN False），始终返回 success=True（无需记录）
+        # - 如果该IP已在 logged_in_ips 且未过期（10分钟内），直接视为已认证
+        # - 否则按提交的 password 字段验证，验证成功则记录该IP的登录时间
+        client_ip = self.client_address[0]
         length = int(self.headers.get('Content-Length', 0))
         data = self.rfile.read(length)
         try:
             obj = json.loads(data.decode('utf-8'))
             password = obj.get('password', '')
-            success = (password == self.PASSWORD) if self.ENABLE_LOGIN else True
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'success': success}, ensure_ascii=False).encode('utf-8'))
         except Exception:
             self.send_response(400)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({'success': False, 'error': 'Invalid request'}, ensure_ascii=False).encode('utf-8'))
+            return
+
+        # 如果登录被禁用
+        if not self.ENABLE_LOGIN:
+            log_message(f"登录禁用，{client_ip} 无需密码直接访问")
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': True}, ensure_ascii=False).encode('utf-8'))
+            return
+
+        # 清理过期登录记录
+        now = time.time()
+        expired = [ip for ip, ts in logged_in_ips.items() if now - ts > AUTH_TTL]
+        for ip in expired:
+            try:
+                del logged_in_ips[ip]
+            except KeyError:
+                pass
+
+        # 如果客户端已在登录列表且未过期，直接认证成功
+        if client_ip in logged_in_ips:
+            log_message(f"免登录验证通过: {client_ip}（{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(logged_in_ips[client_ip]))}）")
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': True}, ensure_ascii=False).encode('utf-8'))
+            return
+
+        # 否则按密码验证
+        success = (password == self.PASSWORD)
+        if success:
+            logged_in_ips[client_ip] = now
+            log_message(f"登录成功: {client_ip} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))}")
+        else:
+            log_message(f"登录失败: {client_ip} (尝试密码: {password})")
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps({'success': success}, ensure_ascii=False).encode('utf-8'))
 
     def do_DELETE(self):
         # 支持删除子目录下文件/文件夹
@@ -369,8 +426,21 @@ class FileServer(SimpleHTTPRequestHandler):
 
     def handle_config(self):
         # 返回是否需要登录，由本地配置决定
+        # 同时返回当前请求IP是否已认证（在登录保持期内）
+        client_ip = self.client_address[0]
+        # 清理过期登录记录
+        now = time.time()
+        expired = [ip for ip, ts in logged_in_ips.items() if now - ts > AUTH_TTL]
+        for ip in expired:
+            try:
+                del logged_in_ips[ip]
+            except KeyError:
+                pass
+
+        authenticated = client_ip in logged_in_ips
         config = {
-            "enableLogin": bool(self.ENABLE_LOGIN)
+            "enableLogin": bool(self.ENABLE_LOGIN),
+            "authenticated": bool(authenticated)
         }
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -472,13 +542,57 @@ class FileServer(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         # 重写父类方法，将所有http访问日志归入webserver_log
         # 对请求路径进行解码，保证日志内容可读
-        decoded_args = tuple(unquote(str(a)) for a in args)
+        # 仅对字符串或bytes类型做unquote解码，保留数字等原类型以匹配format中的占位符（如 %d）
+        decoded_args_list = []
+        for a in args:
+            try:
+                if isinstance(a, bytes):
+                    s = a.decode('utf-8', errors='ignore')
+                    decoded_args_list.append(unquote(s))
+                elif isinstance(a, str):
+                    decoded_args_list.append(unquote(a))
+                else:
+                    decoded_args_list.append(a)
+            except Exception:
+                decoded_args_list.append(a)
+        decoded_args = tuple(decoded_args_list)
+        try:
+            formatted = format % decoded_args
+        except Exception:
+            # 回退到简单字符串拼接，避免日志崩溃
+            try:
+                formatted = format % tuple(str(x) for x in decoded_args)
+            except Exception:
+                formatted = str(format)
+
         msg = "%s [%s] %s" % (
             self.client_address[0],
             self.log_date_time_string(),
-            format % decoded_args
+            formatted
         )
+        # 更新全局最后访问时间（ISO格式）
+        try:
+            client_last_seen[self.client_address[0]] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        except Exception:
+            pass
         log_message(msg)
+
+    def handle_clients(self):
+        """
+        返回已见客户端IP及最后访问时间的JSON数组，格式: [{"ip":"192.168.x.x","lastSeen":"YYYY-MM-DD HH:MM:SS"}, ...]
+        """
+        try:
+            items = []
+            for ip, ts in client_last_seen.items():
+                items.append({'ip': ip, 'lastSeen': ts})
+            # 按最后访问时间降序
+            items.sort(key=lambda x: x.get('lastSeen', ''), reverse=True)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(items, ensure_ascii=False).encode('utf-8'))
+        except Exception:
+            self.send_error(500, 'Internal Server Error')
 
 
 import threading
@@ -549,6 +663,19 @@ def force_stop_server():
         except Exception as e:
             log_message(f"端口socket关闭异常: {e}")
         FileServer.port_socket = None
+    # 清理登录和客户端记录（停止服务时清空）
+    try:
+        if logged_in_ips:
+            log_message(f"清空已登录用户记录: {list(logged_in_ips.keys())}")
+        logged_in_ips.clear()
+    except Exception as e:
+        log_message(f"清空已登录用户记录异常: {e}")
+    try:
+        if client_last_seen:
+            log_message(f"清空已见客户端记录: {list(client_last_seen.keys())}")
+        client_last_seen.clear()
+    except Exception as e:
+        log_message(f"清空已见客户端记录异常: {e}")
     # 关闭线程对象引用
     if _server_thread is not None:
         _server_thread = None

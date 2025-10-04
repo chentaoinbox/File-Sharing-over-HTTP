@@ -373,12 +373,14 @@
         let currentDir = ""; // 当前目录，根目录为空
 
         window.onload = async function() {
-            // 先请求/config接口，判断是否需要登录
+            // 先请求 /config 接口，判断是否需要登录。
+            // 如果服务返回 authenticated=true，说明该请求的 IP 已在登录保持期内，页面应跳过登录直接进入主界面。
             let needLogin = true;
             try {
                 const res = await fetch('/config');
                 const result = await res.json();
-                needLogin = !!result.enableLogin;
+                // 只有在启用登录且当前请求未认证时才显示登录表单
+                needLogin = !!result.enableLogin && !result.authenticated;
             } catch (e) {
                 needLogin = true; // 网络异常时默认需要登录
             }
@@ -389,7 +391,7 @@
                 document.querySelector("header").style.display = "none";
                 document.querySelector(".upload-button-container").style.display = "none";
             } else {
-                // 不需要登录，直接显示主界面
+                // 已认证或未启用登录，直接显示主界面
                 showMain();
             }
         };

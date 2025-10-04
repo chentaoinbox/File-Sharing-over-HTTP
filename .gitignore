@@ -1,2 +1,4 @@
 config
 log
+FileSharingoverHTTP/guiserver/__pycache__/
+FileSharingoverHTTP/webserver/__pycache__/
