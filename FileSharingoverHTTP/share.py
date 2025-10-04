@@ -1,3 +1,9 @@
+# utf-8
+# author: chentao
+# time:2025.10.04
+# description: main control
+# language: python
+# version: 1.1
 from webserver import webserver
 from guiserver import guiserver
 from webserver.webserver import webserver_log
